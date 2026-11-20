@@ -79,27 +79,37 @@ async function initDatabase() {
             )
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS favorites (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, product_id)
+            )
+        `);
+
         // Popula produtos iniciais caso a tabela esteja vazia
         const { rows } = await pool.query('SELECT COUNT(*) FROM products');
         if (parseInt(rows[0].count) === 0) {
             await pool.query(`
                 INSERT INTO products (name, category, price, color, fit, image, stock, featured) VALUES
-                ('Casaco Moletom', 'moletons', 89.90, 'preto', 'regular', '/img/modelo-1.jpeg', 12, TRUE),
-                ('Camisa OVERSIZED', 'camisas', 84.90, 'branco', 'oversized', '/img/modelo-2.jpeg', 15, TRUE),
-                ('Calça Baggy', 'calcas', 149.90, 'preto', 'regular', '/img/modelo-3.jpeg', 10, TRUE),
-                ('Regata Canelada', 'camisas', 59.90, 'branco', 'slim', '/img/modelo-4.jpg', 20, TRUE),
-                ('Camisa em Linho Azul-Marinho', 'camisas', 79.90, 'azul', 'regular', '/img/camisa-azul-linho.jpg', 10, FALSE),
-                ('Camisa em Linho Marrom', 'camisas', 79.90, 'marrom', 'regular', '/img/camisa_marrom-linho.jpg', 10, FALSE),
-                ('Camisa em Linho Off-White', 'camisas', 79.90, 'branco', 'regular', '/img/camisa-off-white-linho.jpg', 10, FALSE),
-                ('Camisa Malha Cotton Marrom', 'camisas', 69.90, 'marrom', 'slim', '/img/camisa-marrom-malha-cotton.jpeg', 14, FALSE),
-                ('Camisa Malha Cotton Preto', 'camisas', 69.90, 'preto', 'regular', '/img/camisa-preta-malha-cotton.jpeg', 18, FALSE),
-                ('Camisa Malha Cotton Vermelho', 'camisas', 69.90, 'vermelho', 'regular', '/img/camisa-vermelha-malha-cotton.jpeg', 8, FALSE),
-                ('Camisa Malha Cotton Verde', 'camisas', 69.90, 'verde', 'regular', '/img/camisa-verde-malha-cotton.jpeg', 9, FALSE),
-                ('Camisa de Tricot Azul', 'camisas', 69.90, 'azul', 'regular', '/img/camisa-azul-tricot.jpeg', 7, FALSE),
-                ('Camisa Manga Longa Preta', 'camisas', 129.90, 'preto', 'manga-longa', '/img/camisa-preta-tricot.jpeg', 11, FALSE),
-                ('Camisa Branca Minimalista', 'camisas', 99.90, 'branco', 'slim', '/img/camisa-vermelha-tricot.jpeg', 13, FALSE),
+                ('Casaco Moletom', 'moletons', 89.90, 'preto', 'moletom', '/img/modelo-1.jpeg', 12, TRUE),
+                ('Camisa OVERSIZED', 'camisas', 84.90, 'bege', 'oversized', '/img/modelo-2.jpeg', 15, TRUE),
+                ('Calça Baggy', 'calcas', 149.90, 'preto', 'baggy', '/img/modelo-3.jpeg', 10, TRUE),
+                ('Regata Canelada', 'camisas', 59.90, 'cinza', 'regata', '/img/modelo-4.jpg', 20, TRUE),
+                ('Camisa em Linho Azul-Marinho', 'camisas', 79.90, 'azul', 'linho', '/img/camisa-azul-linho.jpg', 10, FALSE),
+                ('Camisa em Linho Marrom', 'camisas', 79.90, 'marrom', 'linho', '/img/camisa_marrom-linho.jpg', 10, FALSE),
+                ('Camisa em Linho Off-White', 'camisas', 79.90, 'branco', 'linho', '/img/camisa-off-white-linho.jpg', 10, FALSE),
+                ('Camisa Malha Cotton Marrom', 'camisas', 69.90, 'marrom', 'malha-cotton', '/img/camisa-marrom-malha-cotton.jpeg', 14, FALSE),
+                ('Camisa Malha Cotton Preto', 'camisas', 69.90, 'preto', 'malha-cotton', '/img/camisa-preta-malha-cotton.jpeg', 18, FALSE),
+                ('Camisa Malha Cotton Vermelho', 'camisas', 69.90, 'vermelho', 'malha-cotton', '/img/camisa-vermelha-malha-cotton.jpeg', 8, FALSE),
+                ('Camisa Malha Cotton Verde', 'camisas', 69.90, 'verde', 'malha-cotton', '/img/camisa-verde-malha-cotton.jpeg', 9, FALSE),
+                ('Camisa de Tricot Azul', 'camisas', 69.90, 'azul', 'tricot', '/img/camisa-azul-tricot.jpeg', 7, FALSE),
+                ('Camisa Manga Longa Preta', 'camisas', 129.90, 'preto', 'tricot', '/img/camisa-preta-tricot.jpeg', 11, FALSE),
+                ('Camisa Branca Minimalista', 'camisas', 99.90, 'vermelho', 'tricot', '/img/camisa-vermelha-tricot.jpeg', 13, FALSE),
                 ('Camisa Manga Longa Azul', 'camisas', 139.90, 'azul', 'manga-longa', '/img/camisa-azul-manga-longa.jpeg', 6, FALSE),
-                ('Camiseta Básica Rosa Salmão', 'camisas', 79.90, 'rosa', 'regular', '/img/camisa-marrom-manga-longa.jpeg', 12, FALSE),
+                ('Camiseta Básica Rosa Salmão', 'camisas', 79.90, 'marrom', 'manga-longa', '/img/camisa-marrom-manga-longa.jpeg', 12, FALSE),
                 ('Camisa Manga Longa Preto', 'camisas', 159.90, 'preto', 'manga-longa', '/img/camisa-preta-manga-longa.jpeg', 9, FALSE)
             `);
             console.log('Catálogo inicial da Belutti populado no PostgreSQL.');
@@ -155,7 +165,7 @@ function isAtLeast18(birthDateStr) {
 }
 
 // ==========================================
-// ROTAS DE PRODUTOS E ESTOQUE
+// ROTAS DE PRODUTOS E POPULARIDADE (VENDAS)
 // ==========================================
 app.get('/products', async (req, res) => {
     const { category, featured } = req.query;
@@ -172,10 +182,73 @@ app.get('/products', async (req, res) => {
         }
         query += ' ORDER BY id ASC';
 
-        const { rows } = await pool.query(query, params);
-        res.json(rows);
+        const { rows: products } = await pool.query(query, params);
+
+        // Soma total vendida por produto (considerando pedidos não cancelados)
+        const { rows: validOrders } = await pool.query("SELECT items FROM orders WHERE status != 'Cancelado'");
+        const salesMap = {};
+        for (const order of validOrders) {
+            const items = Array.isArray(order.items) ? order.items : [];
+            for (const item of items) {
+                if (item.name) {
+                    salesMap[item.name] = (salesMap[item.name] || 0) + (parseInt(item.quantity) || 1);
+                }
+            }
+        }
+
+        const enriched = products.map(p => ({
+            ...p,
+            soldCount: salesMap[p.name] || 0
+        }));
+
+        res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: 'Erro ao carregar produtos.' });
+    }
+});
+
+// ==========================================
+// ROTAS DE FAVORITOS (EXIGE LOGIN)
+// ==========================================
+app.get('/favorites', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT p.*
+            FROM favorites f
+            JOIN products p ON f.product_id = p.id
+            WHERE f.user_id = $1
+            ORDER BY f.id DESC
+        `, [req.user.id]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao carregar favoritos.' });
+    }
+});
+
+app.post('/favorites/toggle', authenticateToken, async (req, res) => {
+    const { productId } = req.body;
+    if (!productId) {
+        return res.status(400).json({ error: 'Produto inválido.' });
+    }
+
+    try {
+        const existing = await pool.query(
+            'SELECT id FROM favorites WHERE user_id = $1 AND product_id = $2',
+            [req.user.id, productId]
+        );
+
+        if (existing.rows.length > 0) {
+            await pool.query('DELETE FROM favorites WHERE id = $1', [existing.rows[0].id]);
+            return res.json({ favorited: false, message: 'Removido dos seus favoritos.' });
+        } else {
+            await pool.query(
+                'INSERT INTO favorites (user_id, product_id) VALUES ($1, $2)',
+                [req.user.id, productId]
+            );
+            return res.json({ favorited: true, message: 'Adicionado aos seus favoritos!' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao atualizar favoritos.' });
     }
 });
 
@@ -357,6 +430,7 @@ app.delete('/me', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query('DELETE FROM favorites WHERE user_id = $1', [userId]);
         await client.query('DELETE FROM orders WHERE user_id = $1', [userId]);
         await client.query('DELETE FROM users WHERE id = $1', [userId]);
         await client.query('COMMIT');
@@ -466,9 +540,9 @@ app.put('/my-orders/:id/cancel', authenticateToken, async (req, res) => {
         }
 
         const order = orderRes.rows[0];
-        if (order.status === 'Cancelado' || prevStatus === 'Entregue') {
+        if (order.status === 'Cancelado' || order.status === 'Entregue') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Este pedido já está cancelado.' });
+            return res.status(400).json({ error: 'Este pedido já está encerrado.' });
         }
 
         if (order.status !== 'Pedido Confirmado' && order.status !== 'Em Separação') {
@@ -523,8 +597,7 @@ app.get('/admin/orders', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Alterar status do pedido (devolve itens ao estoque se mudar para 'Cancelado')
-// Alterar status do pedido (bloqueia alteração se já estiver Cancelado)
+// Alterar status do pedido (bloqueia alteração se já estiver Cancelado ou Entregue)
 app.put('/admin/orders/:id/status', authenticateAdmin, async (req, res) => {
     const { status } = req.body;
     const validStatuses = ['Pedido Confirmado', 'Em Separação', 'Enviado', 'Entregue', 'Cancelado'];
@@ -546,9 +619,9 @@ app.put('/admin/orders/:id/status', authenticateAdmin, async (req, res) => {
         const prevStatus = currentOrder.rows[0].status;
         const items = currentOrder.rows[0].items;
 
-        if (prevStatus === 'Cancelado') {
+        if (prevStatus === 'Cancelado' || prevStatus === 'Entregue') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Pedidos cancelados não podem ter o status alterado.' });
+            return res.status(400).json({ error: `Pedidos com status "${prevStatus}" não podem mais ser alterados.` });
         }
 
         if (status === 'Cancelado') {
@@ -610,6 +683,7 @@ app.delete('/admin/users/:id', authenticateAdmin, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query('DELETE FROM favorites WHERE user_id = $1', [targetId]);
         await client.query('DELETE FROM orders WHERE user_id = $1', [targetId]);
         await client.query('DELETE FROM users WHERE id = $1', [targetId]);
         await client.query('COMMIT');
