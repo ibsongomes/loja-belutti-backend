@@ -59,10 +59,17 @@ async function initDatabase() {
                 user_id INTEGER NOT NULL REFERENCES users(id),
                 items JSONB NOT NULL,
                 total NUMERIC(10, 2) NOT NULL,
+                payment_method TEXT DEFAULT 'Pix (Aprovação imediata)',
                 status VARCHAR(50) DEFAULT 'Pedido Confirmado',
                 shipping_address JSONB,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             )
+        `);
+
+        // Garante que a coluna payment_method exista caso a tabela orders já tenha sido criada antes
+        await pool.query(`
+            ALTER TABLE orders
+            ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Pix (Aprovação imediata)'
         `);
 
         await pool.query(`
@@ -485,15 +492,17 @@ app.delete('/me', authenticateToken, async (req, res) => {
 });
 
 // ==========================================
-// ROTAS DE PEDIDOS (COM ESTOQUE E ENDEREÇO)
+// ROTAS DE PEDIDOS (COM ESTOQUE, ENDEREÇO E PAGAMENTO)
 // ==========================================
 app.post('/orders', authenticateToken, async (req, res) => {
-    const { items, total } = req.body;
+    const { items, total, paymentMethod } = req.body;
     const userId = req.user.id;
 
     if (!items || items.length === 0) {
         return res.status(400).json({ error: 'O carrinho está vazio.' });
     }
+
+    const finalPaymentMethod = paymentMethod || 'Pix (Aprovação imediata)';
 
     const client = await pool.connect();
     try {
@@ -519,16 +528,17 @@ app.post('/orders', authenticateToken, async (req, res) => {
         }
 
         const orderRes = await client.query(
-            `INSERT INTO orders (user_id, items, total, status, shipping_address) 
-             VALUES ($1, $2, $3, 'Pedido Confirmado', $4) RETURNING id`,
-            [userId, JSON.stringify(items), total, JSON.stringify(shippingAddress)]
+            `INSERT INTO orders (user_id, items, total, payment_method, status, shipping_address) 
+             VALUES ($1, $2, $3, $4, 'Pedido Confirmado', $5) RETURNING id`,
+            [userId, JSON.stringify(items), total, finalPaymentMethod, JSON.stringify(shippingAddress)]
         );
 
         await client.query('COMMIT');
 
         res.status(201).json({
             message: 'Pedido realizado com sucesso!',
-            orderId: 1000 + orderRes.rows[0].id
+            orderId: 1000 + orderRes.rows[0].id,
+            paymentMethod: finalPaymentMethod
         });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -542,7 +552,7 @@ app.post('/orders', authenticateToken, async (req, res) => {
 app.get('/my-orders', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
-            'SELECT id, items, total, status, shipping_address, created_at FROM orders WHERE user_id = $1 ORDER BY id DESC',
+            'SELECT id, items, total, payment_method, status, shipping_address, created_at FROM orders WHERE user_id = $1 ORDER BY id DESC',
             [req.user.id]
         );
 
@@ -551,6 +561,7 @@ app.get('/my-orders', authenticateToken, async (req, res) => {
             orderNumber: 1000 + row.id,
             items: row.items,
             total: parseFloat(row.total),
+            paymentMethod: row.payment_method || 'Pix (Aprovação imediata)',
             status: row.status || 'Pedido Confirmado',
             shippingAddress: row.shipping_address,
             date: formatOrderDate(row.created_at)
@@ -609,7 +620,7 @@ app.put('/my-orders/:id/cancel', authenticateToken, async (req, res) => {
 app.get('/admin/orders', authenticateAdmin, async (req, res) => {
     try {
         const { rows } = await pool.query(`
-            SELECT o.id, o.items, o.total, o.status, o.shipping_address, o.created_at,
+            SELECT o.id, o.items, o.total, o.payment_method, o.status, o.shipping_address, o.created_at,
                    u.name AS customer_name, u.email AS customer_email, u.cpf AS customer_cpf
             FROM orders o
             JOIN users u ON o.user_id = u.id
@@ -624,6 +635,7 @@ app.get('/admin/orders', authenticateAdmin, async (req, res) => {
             customerCpf: r.customer_cpf,
             items: r.items,
             total: parseFloat(r.total),
+            paymentMethod: r.payment_method || 'Pix (Aprovação imediata)',
             status: r.status,
             shippingAddress: r.shipping_address,
             date: formatOrderDate(r.created_at)
