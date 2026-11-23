@@ -35,7 +35,7 @@ function formatOrderDate(rawTimestamp) {
     });
 }
 
-// Inicialização das tabelas e seed inicial de produtos
+// Inicialização das tabelas e seed/sincronização de produtos
 async function initDatabase() {
     try {
         await pool.query(`
@@ -94,10 +94,10 @@ async function initDatabase() {
         if (parseInt(rows[0].count) === 0) {
             await pool.query(`
                 INSERT INTO products (name, category, price, color, fit, image, stock, featured) VALUES
-                ('Casaco Moletom', 'moletons', 89.90, 'preto', 'moletom', '/img/modelo-1.jpeg', 12, TRUE),
-                ('Camisa OVERSIZED', 'camisas', 84.90, 'bege', 'oversized', '/img/modelo-2.jpeg', 15, TRUE),
-                ('Calça Baggy', 'calcas', 149.90, 'preto', 'baggy', '/img/modelo-3.jpeg', 10, TRUE),
-                ('Regata Canelada', 'camisas', 59.90, 'cinza', 'regata', '/img/modelo-4.jpg', 20, TRUE),
+                ('Casaco Moletom Preto', 'moletons', 89.90, 'preto', 'moletom', '/img/modelo-1.jpeg', 12, TRUE),
+                ('Camisa OVERSIZED Bege', 'camisas', 84.90, 'bege', 'oversized', '/img/modelo-2.jpeg', 15, TRUE),
+                ('Calça Baggy Preta', 'calcas', 149.90, 'preto', 'baggy', '/img/modelo-3.jpeg', 10, TRUE),
+                ('Regata Canelada Cinza', 'camisas', 59.90, 'cinza', 'regata', '/img/modelo-4.jpg', 20, TRUE),
                 ('Camisa em Linho Azul-Marinho', 'camisas', 79.90, 'azul', 'linho', '/img/camisa-azul-linho.jpg', 10, FALSE),
                 ('Camisa em Linho Marrom', 'camisas', 79.90, 'marrom', 'linho', '/img/camisa_marrom-linho.jpg', 10, FALSE),
                 ('Camisa em Linho Off-White', 'camisas', 79.90, 'branco', 'linho', '/img/camisa-off-white-linho.jpg', 10, FALSE),
@@ -107,12 +107,28 @@ async function initDatabase() {
                 ('Camisa Malha Cotton Verde', 'camisas', 69.90, 'verde', 'malha-cotton', '/img/camisa-verde-malha-cotton.jpeg', 9, FALSE),
                 ('Camisa de Tricot Azul', 'camisas', 69.90, 'azul', 'tricot', '/img/camisa-azul-tricot.jpeg', 7, FALSE),
                 ('Camisa Manga Longa Preta', 'camisas', 129.90, 'preto', 'tricot', '/img/camisa-preta-tricot.jpeg', 11, FALSE),
-                ('Camisa Branca Minimalista', 'camisas', 99.90, 'vermelho', 'tricot', '/img/camisa-vermelha-tricot.jpeg', 13, FALSE),
+                ('Camisa de Tricot Vermelha', 'camisas', 99.90, 'vermelho', 'tricot', '/img/camisa-vermelha-tricot.jpeg', 13, FALSE),
                 ('Camisa Manga Longa Azul', 'camisas', 139.90, 'azul', 'manga-longa', '/img/camisa-azul-manga-longa.jpeg', 6, FALSE),
-                ('Camiseta Básica Rosa Salmão', 'camisas', 79.90, 'marrom', 'manga-longa', '/img/camisa-marrom-manga-longa.jpeg', 12, FALSE),
+                ('Camisa Manga Longa Marrom', 'camisas', 79.90, 'marrom', 'manga-longa', '/img/camisa-marrom-manga-longa.jpeg', 12, FALSE),
                 ('Camisa Manga Longa Preto', 'camisas', 159.90, 'preto', 'manga-longa', '/img/camisa-preta-manga-longa.jpeg', 9, FALSE)
             `);
             console.log('Catálogo inicial da Belutti populado no PostgreSQL.');
+        } else {
+            // Sincroniza nomes e atributos corretos das peças no banco existente
+            const productFixes = [
+                { image: '/img/modelo-1.jpeg', name: 'Casaco Moletom Preto', color: 'preto', fit: 'moletom' },
+                { image: '/img/modelo-2.jpeg', name: 'Camisa OVERSIZED Bege', color: 'bege', fit: 'oversized' },
+                { image: '/img/modelo-3.jpeg', name: 'Calça Baggy Preta', color: 'preto', fit: 'baggy' },
+                { image: '/img/modelo-4.jpg', name: 'Regata Canelada Cinza', color: 'cinza', fit: 'regata' },
+                { image: '/img/camisa-vermelha-tricot.jpeg', name: 'Camisa de Tricot Vermelha', color: 'vermelho', fit: 'tricot' },
+                { image: '/img/camisa-marrom-manga-longa.jpeg', name: 'Camisa Manga Longa Marrom', color: 'marrom', fit: 'manga-longa' }
+            ];
+            for (const fix of productFixes) {
+                await pool.query(
+                    'UPDATE products SET name = $1, color = $2, fit = $3 WHERE image = $4',
+                    [fix.name, fix.color, fix.fit, fix.image]
+                );
+            }
         }
 
         console.log('Conectado ao PostgreSQL (Neon) e tabelas verificadas.');
@@ -184,7 +200,6 @@ app.get('/products', async (req, res) => {
 
         const { rows: products } = await pool.query(query, params);
 
-        // Soma total vendida por produto (considerando pedidos não cancelados)
         const { rows: validOrders } = await pool.query("SELECT items FROM orders WHERE status != 'Cancelado'");
         const salesMap = {};
         for (const order of validOrders) {
@@ -204,6 +219,35 @@ app.get('/products', async (req, res) => {
         res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: 'Erro ao carregar produtos.' });
+    }
+});
+
+app.get('/products/:id', async (req, res) => {
+    const productId = parseInt(req.params.id);
+    if (isNaN(productId)) {
+        return res.status(400).json({ error: 'ID de produto inválido.' });
+    }
+
+    try {
+        const { rows } = await pool.query('SELECT * FROM products WHERE id = $1', [productId]);
+        if (!rows[0]) {
+            return res.status(404).json({ error: 'Produto não encontrado.' });
+        }
+
+        const { rows: validOrders } = await pool.query("SELECT items FROM orders WHERE status != 'Cancelado'");
+        let soldCount = 0;
+        for (const order of validOrders) {
+            const items = Array.isArray(order.items) ? order.items : [];
+            for (const item of items) {
+                if (item.name === rows[0].name) {
+                    soldCount += (parseInt(item.quantity) || 1);
+                }
+            }
+        }
+
+        res.json({ ...rows[0], soldCount });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao carregar detalhes do produto.' });
     }
 });
 
@@ -328,7 +372,6 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// Solicitar token de redefinição de senha
 app.post('/forgot-password', async (req, res) => {
     const { email } = req.body;
     try {
@@ -338,7 +381,7 @@ app.post('/forgot-password', async (req, res) => {
         }
 
         const resetToken = crypto.randomBytes(20).toString('hex');
-        const expires = Date.now() + 3600000; // 1 hora
+        const expires = Date.now() + 3600000;
 
         await pool.query(
             'UPDATE users SET reset_token = $1, reset_expires = $2 WHERE id = $3',
@@ -354,7 +397,6 @@ app.post('/forgot-password', async (req, res) => {
     }
 });
 
-// Redefinir senha com token
 app.post('/reset-password', async (req, res) => {
     const { token, newPassword } = req.body;
     if (!newPassword || newPassword.length < 6) {
@@ -424,7 +466,6 @@ app.put('/me', authenticateToken, async (req, res) => {
     }
 });
 
-// Excluir a própria conta do usuário logado
 app.delete('/me', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const client = await pool.connect();
@@ -458,11 +499,9 @@ app.post('/orders', authenticateToken, async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // 1. Busca o endereço atual do cliente para registrar no pedido
         const userRes = await client.query('SELECT address FROM users WHERE id = $1', [userId]);
         const shippingAddress = userRes.rows[0]?.address || {};
 
-        // 2. Valida e abate o estoque de cada item comprado
         for (const item of items) {
             const prodRes = await client.query('SELECT id, stock FROM products WHERE name = $1 FOR UPDATE', [item.name]);
             if (prodRes.rows[0]) {
@@ -479,7 +518,6 @@ app.post('/orders', authenticateToken, async (req, res) => {
             }
         }
 
-        // 3. Cria o pedido
         const orderRes = await client.query(
             `INSERT INTO orders (user_id, items, total, status, shipping_address) 
              VALUES ($1, $2, $3, 'Pedido Confirmado', $4) RETURNING id`,
@@ -524,7 +562,6 @@ app.get('/my-orders', authenticateToken, async (req, res) => {
     }
 });
 
-// Rota para o próprio cliente cancelar o pedido (permitido antes do envio)
 app.put('/my-orders/:id/cancel', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -550,7 +587,6 @@ app.put('/my-orders/:id/cancel', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Pedidos já enviados ou entregues não podem ser cancelados pelo site.' });
         }
 
-        // Devolve os itens ao estoque
         for (const item of order.items) {
             await client.query('UPDATE products SET stock = stock + $1 WHERE name = $2', [item.quantity, item.name]);
         }
@@ -597,7 +633,6 @@ app.get('/admin/orders', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Alterar status do pedido (bloqueia alteração se já estiver Cancelado ou Entregue)
 app.put('/admin/orders/:id/status', authenticateAdmin, async (req, res) => {
     const { status } = req.body;
     const validStatuses = ['Pedido Confirmado', 'Em Separação', 'Enviado', 'Entregue', 'Cancelado'];
@@ -642,7 +677,6 @@ app.put('/admin/orders/:id/status', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Adicionar estoque a um produto
 app.put('/admin/products/:id/stock', authenticateAdmin, async (req, res) => {
     const addQuantity = parseInt(req.body.addQuantity);
     if (isNaN(addQuantity) || addQuantity === 0) {
@@ -661,7 +695,6 @@ app.put('/admin/products/:id/stock', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Listar todas as contas cadastradas
 app.get('/admin/users', authenticateAdmin, async (req, res) => {
     try {
         const { rows } = await pool.query(
@@ -673,7 +706,6 @@ app.get('/admin/users', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Excluir qualquer conta de usuário (Admin)
 app.delete('/admin/users/:id', authenticateAdmin, async (req, res) => {
     const targetId = parseInt(req.params.id);
     if (targetId === req.user.id) {
